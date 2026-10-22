@@ -195,7 +195,7 @@ python run.py
 - [x] Smart Lecture & Meeting Notes Generator (Summaries, Formulas, Questions)
 - [x] Autonomous Command Mode (Task extraction & Calendar scheduling via `.ics`)
 - [x] Searchable Personal AI Memory (Context retrieval & Q&A)
-- [x] ChatGPT Desktop neutral dark design system
+- [x] Neutral dark design system
 - [ ] Mobile Application Gateway (FastAPI / WebSocket server for Android & iOS)
 - [ ] Bluetooth Low Energy (BLE) integration for IoT wearable audio pendants
 
