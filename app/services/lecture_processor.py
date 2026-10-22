@@ -80,12 +80,14 @@ class LectureProcessor:
         raw_output = ""
         provider = app_config.get("postprocessing_provider", "ollama")
 
-        if provider == "ollama" and self.ollama.is_available():
-            try:
-                # Custom query with lecture system prompt
-                raw_output = self._query_ollama(prompt)
-            except Exception as e:
-                print(f"[LectureProcessor] Ollama failed: {e}. Trying cloud fallback.")
+        try:
+            if provider == "ollama" and hasattr(self.ollama, "is_available") and self.ollama.is_available():
+                try:
+                    raw_output = self._query_ollama(prompt)
+                except Exception as e:
+                    print(f"[LectureProcessor] Ollama failed: {e}. Trying cloud fallback.")
+        except Exception as e:
+            print(f"[LectureProcessor] Ollama check error: {e}")
 
         has_cloud_keys = bool(app_config.get("groq_api_key", "").strip() or app_config.get("openai_api_key", "").strip())
         if not raw_output and has_cloud_keys:

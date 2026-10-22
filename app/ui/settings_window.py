@@ -725,10 +725,16 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
 
     def _populate_ollama_models(self):
         saved = app_config.get("ollama_model", "llama3.2:latest")
+        if "embed" in saved.lower():
+            saved = "llama3.2:latest"
+            app_config.set("ollama_model", saved)
+
         self.combo_ollama_model.clear()
         models = OllamaPostProcessor.get_installed_models()
-        if models:
-            self.combo_ollama_model.addItems(models)
+        # Filter out embedding-only models like nomic-embed-text
+        chat_models = [m for m in models if "embed" not in m.lower()]
+        if chat_models:
+            self.combo_ollama_model.addItems(chat_models)
         else:
             self.combo_ollama_model.addItem("llama3.2:latest")
 

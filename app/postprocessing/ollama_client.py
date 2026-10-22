@@ -24,6 +24,14 @@ class OllamaPostProcessor:
         self.base_url = base_url.rstrip("/")
         self.model = model
 
+    def is_available(self) -> bool:
+        """Check if local Ollama daemon is currently running and reachable."""
+        try:
+            r = requests.get(f"{self.base_url}/api/tags", timeout=1.5)
+            return r.status_code == 200
+        except Exception:
+            return False
+
     def clean_dictation(
         self,
         transcript: str,

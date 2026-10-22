@@ -3,6 +3,7 @@ Floating / Docked Top Notch Pill Overlay for FreeFlow Windows.
 Matches the minimal, sleek macOS/Wispr Flow top notch design with pure white waveform.
 """
 
+import os
 import math
 from typing import List, Optional
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QRectF, pyqtSlot
@@ -13,8 +14,14 @@ from PyQt6.QtWidgets import (
     QMenu,
     QGraphicsOpacityEffect,
 )
+from PyQt6.QtSvg import QSvgRenderer
 
 from app.config import app_config
+
+_ASSETS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "assets")).replace("\\", "/")
+ICON_MIC = f"{_ASSETS_DIR}/mic.svg"
+ICON_SPARKLE = f"{_ASSETS_DIR}/sparkle.svg"
+ICON_CHECK = f"{_ASSETS_DIR}/check.svg"
 
 
 class MinimalWaveform(QWidget):
@@ -146,10 +153,17 @@ class PillOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         # Minimal notch size
-        self.setFixedSize(148, 38)
+        self.setFixedSize(156, 38)
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
         self._drag_start_pos: Optional[QPoint] = None
+
+        # Crisp vector status icons
+        self._svg_renderers = {
+            "mic": QSvgRenderer(ICON_MIC),
+            "sparkle": QSvgRenderer(ICON_SPARKLE),
+            "check": QSvgRenderer(ICON_CHECK),
+        }
 
         # Opacity animation
         self.opacity_effect = QGraphicsOpacityEffect(self)
@@ -159,9 +173,9 @@ class PillOverlay(QWidget):
         self.opacity_anim.setDuration(160)
         self.opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        # Centered Waveform
+        # Waveform placed neatly beside the left status icon
         self.waveform = MinimalWaveform(num_bars=13, parent=self)
-        self.waveform.move((self.width() - self.waveform.width()) // 2, (self.height() - self.waveform.height()) // 2)
+        self.waveform.move(44, (self.height() - self.waveform.height()) // 2)
 
         # Auto-hide timer
         self.auto_hide_timer = QTimer(self)
@@ -309,6 +323,18 @@ class PillOverlay(QWidget):
 
         pen = QPen(border_color, 1.0)
         painter.strokePath(path, pen)
+
+        # Draw status icon on the left of the pill
+        icon_name = "mic"
+        if self.current_state in ("TRANSCRIBING", "POSTPROCESSING"):
+            icon_name = "sparkle"
+        elif self.current_state == "PASTED":
+            icon_name = "check"
+
+        renderer = self._svg_renderers.get(icon_name)
+        if renderer and renderer.isValid():
+            icon_rect = QRectF(15.0, 11.0, 16.0, 16.0)
+            renderer.render(painter, icon_rect)
 
     # ------------------ Lifecycle & Thread-Safe Slots ------------------
 
