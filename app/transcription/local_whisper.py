@@ -18,6 +18,7 @@ class LocalWhisperService(BaseTranscriptionService):
     _cached_device: Optional[str] = None
     _cached_compute_type: Optional[str] = None
     _model_lock = threading.Lock()
+    _inference_lock = threading.Lock()
 
     def __init__(
         self,
@@ -68,21 +69,21 @@ class LocalWhisperService(BaseTranscriptionService):
             return ""
 
         model = self._get_model()
+        with self._inference_lock:
+            # faster-whisper expects 16kHz float32 audio
+            segments, info = model.transcribe(
+                audio,
+                beam_size=1,            # 1 for maximum speed, 3 for higher accuracy
+                language=language,
+                temperature=0.0,
+                vad_filter=True,        # Built-in Silero VAD to eliminate silence
+                vad_parameters=dict(min_silence_duration_ms=400)
+            )
 
-        # faster-whisper expects 16kHz float32 audio
-        segments, info = model.transcribe(
-            audio,
-            beam_size=1,            # 1 for maximum speed, 3 for higher accuracy
-            language=language,
-            temperature=0.0,
-            vad_filter=True,        # Built-in Silero VAD to eliminate silence
-            vad_parameters=dict(min_silence_duration_ms=400)
-        )
+            text_pieces = []
+            for segment in segments:
+                t = segment.text.strip()
+                if t:
+                    text_pieces.append(t)
 
-        text_pieces = []
-        for segment in segments:
-            t = segment.text.strip()
-            if t:
-                text_pieces.append(t)
-
-        return " ".join(text_pieces).strip()
+            return " ".join(text_pieces).strip()

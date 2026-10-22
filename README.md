@@ -189,6 +189,8 @@ python run.py
 ## Roadmap
 
 - [x] Faster-Whisper local offline speech-to-text
+- [x] Live Speech-to-Text streaming preview on the floating top notch pill
+- [x] Direct Unicode cursor injection ("Typed with bliss" via Windows `SendInput`)
 - [x] Real-time soundwave notch pill overlay
 - [x] Context-aware text cleanup (window title and app awareness)
 - [x] Voice Edit Mode for rewriting highlighted text

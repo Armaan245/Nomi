@@ -94,6 +94,15 @@ class AudioRecorder(QObject):
 
         return audio_data
 
+    def get_current_audio(self) -> Optional[np.ndarray]:
+        """Return a snapshot of recorded audio so far without stopping the recording."""
+        if not self._is_recording:
+            return None
+        with self._lock:
+            if not self._frames:
+                return None
+            return np.concatenate(self._frames, axis=0).flatten()
+
     def _audio_callback(self, indata: np.ndarray, frames: int, time_info, status):
         """Callback invoked by sounddevice when audio is received."""
         if not self._is_recording:

@@ -32,6 +32,7 @@ class AppController(QObject):
 
     # Thread-safe GUI signals
     signal_set_state_listening = pyqtSignal()
+    signal_update_live_text = pyqtSignal(str)
     signal_set_state_transcribing = pyqtSignal()
     signal_set_state_polishing = pyqtSignal()
     signal_set_state_pasted = pyqtSignal(str)
@@ -48,11 +49,21 @@ class AppController(QObject):
 
         # Connect thread-safe signals to Pill UI
         self.signal_set_state_listening.connect(self.pill.set_state_listening)
+        self.signal_update_live_text.connect(self.pill.update_live_text)
         self.signal_set_state_transcribing.connect(self.pill.set_state_transcribing)
         self.signal_set_state_polishing.connect(self.pill.set_state_polishing)
         self.signal_set_state_pasted.connect(self.pill.set_state_pasted)
         self.signal_set_state_cancelled.connect(self.pill.set_state_cancelled)
         self.signal_add_history.connect(self.settings_window.add_history_entry)
+
+        # Live speech streaming timer
+        from PyQt6.QtCore import QTimer
+        self._live_timer = QTimer(self)
+        self._live_timer.setInterval(480)
+        self._live_timer.timeout.connect(self._on_live_stream_tick)
+        self._live_worker_busy = False
+        self._last_stream_samples = 0
+        self._latest_live_text = ""
 
         # Audio Recorder
         dev_idx = app_config.get("input_device_index")
@@ -172,12 +183,22 @@ class AppController(QObject):
         # Show Notch / Pill Visualizer
         self.signal_set_state_listening.emit()
 
+        # Reset streaming state
+        self._last_stream_samples = 0
+        self._latest_live_text = ""
+        self._live_worker_busy = False
+
         # Start microphone recording
         started = self.recorder.start()
         if not started:
             print("[Controller] Failed to start audio recorder!")
             self.signal_set_state_cancelled.emit("Mic Error")
             self._is_active = False
+            return
+
+        # Start live transcription timer if enabled
+        if app_config.get("live_transcription_enabled", True):
+            self._live_timer.start()
 
     @pyqtSlot()
     def stop_dictation(self):
@@ -186,6 +207,7 @@ class AppController(QObject):
             return
 
         self._is_active = False
+        self._live_timer.stop()
 
         # Stop microphone
         audio_data = self.recorder.stop()
@@ -228,8 +250,38 @@ class AppController(QObject):
             return
         print("[Controller] Session cancelled by user.")
         self._is_active = False
+        self._live_timer.stop()
         self.recorder.stop()
         self.signal_set_state_cancelled.emit("Cancelled")
+
+    def _on_live_stream_tick(self):
+        """Periodic tick to transcribe accumulating microphone audio and stream live text to the notch."""
+        if not self._is_active or self._live_worker_busy:
+            return
+
+        audio = self.recorder.get_current_audio()
+        if audio is None or len(audio) < 16000 * 0.45:
+            return
+
+        # Check if meaningful new audio arrived (> 0.25s)
+        if (len(audio) - self._last_stream_samples) < 16000 * 0.25:
+            return
+
+        self._last_stream_samples = len(audio)
+        self._live_worker_busy = True
+
+        def _worker(audio_chunk: np.ndarray):
+            try:
+                partial = self._local_whisper.transcribe(audio_chunk)
+                if self._is_active and partial:
+                    self._latest_live_text = partial
+                    self.signal_update_live_text.emit(partial)
+            except Exception as e:
+                print(f"[Controller] Live streaming preview tick error: {e}")
+            finally:
+                self._live_worker_busy = False
+
+        threading.Thread(target=_worker, args=(audio,), daemon=True).start()
 
     def _process_pipeline_worker(
         self,
@@ -341,19 +393,23 @@ class AppController(QObject):
                     QTimer.singleShot(100, lambda: self._open_memory_query(query))
                     return
 
-            # 5. Auto-Pasting (Regular Dictation)
+            # 5. Direct Cursor Injection with Bliss (SendInput Unicode)
             if app_config.get("auto_paste", True):
                 self.signal_set_state_pasted.emit(final_text)
+                mode = app_config.get("typing_mode", "direct")
+                speed_ms = app_config.get("typing_speed_ms", 0)
                 restore_clip = app_config.get("restore_clipboard", True)
                 delay_ms = app_config.get("paste_delay_ms", 70)
-                print(f"[Pipeline] Pasting text into target window (HWND: {target_hwnd})...")
-                pasted = TextPaster.paste_text(
+                print(f"[Pipeline] Typing text directly at cursor (HWND: {target_hwnd}, mode: '{mode}', speed: {speed_ms}ms)...")
+                injected = TextPaster.inject_text(
                     final_text,
+                    target_hwnd=target_hwnd,
+                    mode=mode,
+                    speed_ms=speed_ms,
                     restore_clipboard=restore_clip,
-                    delay_ms=delay_ms,
-                    target_hwnd=target_hwnd
+                    delay_ms=delay_ms
                 )
-                print(f"[Pipeline] Paste completed: {pasted}")
+                print(f"[Pipeline] Cursor injection completed: {injected}")
             else:
                 self.signal_set_state_pasted.emit("Copied!")
                 import pyperclip

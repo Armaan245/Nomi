@@ -328,24 +328,44 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
         ))
         layout.addWidget(card1)
 
-        # Section 2: Clipboard & Pasting
-        lbl_sec2 = QLabel("Pasting & Clipboard")
+        # Section 2: Cursor Typing & Live Preview
+        lbl_sec2 = QLabel("Cursor Typing & Live Preview")
         lbl_sec2.setObjectName("sectionHeader")
         layout.addWidget(lbl_sec2)
 
         card2 = SettingsCard()
 
+        self.sw_live_preview = SwitchToggle()
+        card2.add_row(SettingsRow(
+            "Live Speech Preview in Notch",
+            "Displays the recognized words in real time directly on the floating top notch while you are speaking.",
+            self.sw_live_preview
+        ))
+
+        self.combo_typing_mode = QComboBox()
+        self.combo_typing_mode.addItems([
+            "Direct Cursor Typing (With Bliss)",
+            "Smooth Typewriter Flow",
+            "Clipboard Paste (Ctrl+V)"
+        ])
+        self.combo_typing_mode.setFixedWidth(280)
+        card2.add_row(SettingsRow(
+            "Cursor Insertion Method",
+            "Direct cursor typing uses Windows Unicode SendInput to type characters directly where the blinking cursor is with zero clipboard interference.",
+            self.combo_typing_mode
+        ))
+
         self.sw_auto_paste = SwitchToggle()
         card2.add_row(SettingsRow(
-            "Auto-paste text",
-            "Simulates Ctrl+V into the currently active window immediately after transcription finishes.",
+            "Auto-insert text at cursor",
+            "Automatically inserts recognized speech into the focused application at the cursor location.",
             self.sw_auto_paste
         ))
 
         self.sw_restore_clip = SwitchToggle()
         card2.add_row(SettingsRow(
             "Restore previous clipboard content",
-            "Preserves your existing clipboard history and restores previous text after auto-pasting completes.",
+            "Preserves your existing clipboard history and restores previous text after auto-pasting completes (clipboard mode only).",
             self.sw_restore_clip
         ))
 
@@ -773,7 +793,16 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
             self.combo_toggle_key.addItem(toggle_k)
             self.combo_toggle_key.setCurrentIndex(self.combo_toggle_key.count() - 1)
 
-        # 2. Paste & Context Switches
+        # 2. Cursor Typing, Live Preview & Context Switches
+        self.sw_live_preview.setChecked(bool(app_config.get("live_transcription_enabled", True)))
+        t_mode = app_config.get("typing_mode", "direct")
+        if t_mode == "direct":
+            self.combo_typing_mode.setCurrentIndex(0)
+        elif t_mode in ("smooth", "typewriter"):
+            self.combo_typing_mode.setCurrentIndex(1)
+        else:
+            self.combo_typing_mode.setCurrentIndex(2)
+
         self.sw_auto_paste.setChecked(bool(app_config.get("auto_paste", True)))
         self.sw_restore_clip.setChecked(bool(app_config.get("restore_clipboard", True)))
         self.sw_context_aware.setChecked(bool(app_config.get("context_aware", True)))
@@ -839,6 +868,17 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
         app_config.set("hotkey_mode", mode)
         app_config.set("hold_hotkey", self.combo_hold_key.currentText().strip())
         app_config.set("toggle_hotkey", self.combo_toggle_key.currentText().strip())
+
+        app_config.set("live_transcription_enabled", self.sw_live_preview.isChecked())
+        t_idx = self.combo_typing_mode.currentIndex()
+        if t_idx == 0:
+            app_config.set("typing_mode", "direct")
+            app_config.set("typing_speed_ms", 0)
+        elif t_idx == 1:
+            app_config.set("typing_mode", "smooth")
+            app_config.set("typing_speed_ms", 4)
+        else:
+            app_config.set("typing_mode", "clipboard")
 
         app_config.set("auto_paste", self.sw_auto_paste.isChecked())
         app_config.set("restore_clipboard", self.sw_restore_clip.isChecked())

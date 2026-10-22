@@ -62,10 +62,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "GitHub"
     ],
 
-    # Output & Pasting
-    "auto_paste": True,                         # Auto-paste via simulated Ctrl+V
-    "restore_clipboard": True,                  # Restore prior clipboard contents after paste
-    "paste_delay_ms": 70,                       # Delay before sending Ctrl+V
+    # Output, Typing & Pasting
+    "auto_paste": True,                         # Auto-insert into active cursor
+    "typing_mode": "direct",                    # "direct" (SendInput Unicode cursor typing with bliss), "smooth" (typewriter flow), "clipboard"
+    "typing_speed_ms": 0,                       # Typing delay in ms (0 = instant bliss, 4 = smooth typewriter)
+    "live_transcription_enabled": True,         # Live real-time preview of spoken text in floating notch
+    "restore_clipboard": True,                  # Restore prior clipboard contents if clipboard paste is used
+    "paste_delay_ms": 70,                       # Delay before sending Ctrl+V (clipboard mode)
 
     # UI Preferences
     "overlay_position": "bottom_center",        # "bottom_center", "top_center", "bottom_right"
