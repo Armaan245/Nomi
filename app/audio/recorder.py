@@ -51,15 +51,33 @@ class AudioRecorder(QObject):
             self._frames.clear()
             self._is_recording = True
 
+        self._actual_samplerate = self.sample_rate
         try:
-            self._stream = sd.InputStream(
-                samplerate=self.sample_rate,
-                channels=1,
-                dtype="float32",
-                device=self.device_index,
-                blocksize=1024,
-                callback=self._audio_callback
-            )
+            try:
+                self._stream = sd.InputStream(
+                    samplerate=self.sample_rate,
+                    channels=1,
+                    dtype="float32",
+                    device=self.device_index,
+                    blocksize=1024,
+                    callback=self._audio_callback
+                )
+            except Exception as e_initial:
+                # Bluetooth / Hands-Free devices often mandate their native default samplerate (e.g. 44100 or 48000)
+                dev_idx = self.device_index if self.device_index is not None else sd.default.device[0]
+                dev_info = sd.query_devices(dev_idx)
+                native_sr = int(dev_info.get("default_samplerate", 44100))
+                print(f"[AudioRecorder] 16kHz not accepted ({e_initial}), falling back to native {native_sr}Hz for Bluetooth compatibility...")
+                self._actual_samplerate = native_sr
+                self._stream = sd.InputStream(
+                    samplerate=native_sr,
+                    channels=1,
+                    dtype="float32",
+                    device=self.device_index,
+                    blocksize=int(native_sr * 0.05),
+                    callback=self._audio_callback
+                )
+
             self._stream.start()
             self.recording_started.emit()
             return True
@@ -114,6 +132,14 @@ class AudioRecorder(QObject):
             return
 
         chunk = indata.copy()
+        if hasattr(self, '_actual_samplerate') and self._actual_samplerate != self.sample_rate:
+            import math
+            from scipy.signal import resample_poly
+            gcd = math.gcd(self.sample_rate, self._actual_samplerate)
+            up = self.sample_rate // gcd
+            down = self._actual_samplerate // gcd
+            chunk = resample_poly(chunk, up, down).astype(np.float32)
+
         if self.gain != 1.0:
             chunk = np.clip(chunk * self.gain, -1.0, 1.0)
 
@@ -135,15 +161,19 @@ class AudioRecorder(QObject):
 
     @staticmethod
     def get_input_devices() -> List[dict]:
-        """List all available audio input devices."""
+        """List all available working audio input devices, filtering out broken kernel streaming endpoints."""
         devices = []
         try:
             device_list = sd.query_devices()
             for idx, dev in enumerate(device_list):
+                name = dev.get("name", "")
+                # Skip internal WDM-KS endpoints that fail with "Blocking API not supported"
+                if name.startswith("@System32") or "bthhfenum.sys" in name:
+                    continue
                 if dev.get("max_input_channels", 0) > 0:
                     devices.append({
                         "index": idx,
-                        "name": dev.get("name", f"Device {idx}"),
+                        "name": name if name else f"Device {idx}",
                         "channels": dev.get("max_input_channels", 1),
                         "default_samplerate": dev.get("default_samplerate", 16000),
                         "hostapi": dev.get("hostapi", 0)

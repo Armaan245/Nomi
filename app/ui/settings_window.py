@@ -797,7 +797,12 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
         self.combo_mic.addItem("Default Microphone", None)
         devices = AudioRecorder.get_input_devices()
         for dev in devices:
-            self.combo_mic.addItem(f"{dev['name']} [ID: {dev['index']}]", dev['index'])
+            name = dev['name']
+            tag = ""
+            lower = name.lower()
+            if any(bt in lower for bt in ("headset", "earbuds", "hands-free", "airbass", "bluetooth", "airpods", "buds", "wireless")):
+                tag = " [Bluetooth]"
+            self.combo_mic.addItem(f"{name}{tag} [ID: {dev['index']}]", dev['index'])
 
         if saved_idx is not None:
             idx = self.combo_mic.findData(saved_idx)
