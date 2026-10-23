@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QHeaderView,
     QProgressBar,
+    QSlider,
     QMessageBox,
     QFrame,
     QButtonGroup,
@@ -468,6 +469,70 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
             "Check audio sensitivity and ensure your voice input is detected properly.",
             test_widget
         ))
+
+        # Mic Gain / Pickup Range Slider
+        gain_widget = QWidget()
+        g_layout = QHBoxLayout(gain_widget)
+        g_layout.setContentsMargins(0, 0, 0, 0)
+        g_layout.setSpacing(10)
+
+        self.slider_gain = QSlider(Qt.Orientation.Horizontal)
+        self.slider_gain.setRange(50, 300)
+        self.slider_gain.setValue(100)
+        self.slider_gain.setFixedWidth(160)
+        self.lbl_gain_val = QLabel("1.0x (Default)")
+        self.lbl_gain_val.setStyleSheet("color: #FFFFFF; font-size: 12px; font-weight: 500;")
+        self.lbl_gain_val.setFixedWidth(120)
+        self.slider_gain.valueChanged.connect(self._on_gain_slider_changed)
+        g_layout.addWidget(self.slider_gain)
+        g_layout.addWidget(self.lbl_gain_val)
+
+        card.add_row(SettingsRow(
+            "Microphone Pickup Range (Gain)",
+            "Boost input pickup range and volume so Nomi clearly detects whispers or speech from across the room.",
+            gain_widget
+        ))
+
+        # Energy Threshold / Silence Gate Slider
+        energy_widget = QWidget()
+        e_layout = QHBoxLayout(energy_widget)
+        e_layout.setContentsMargins(0, 0, 0, 0)
+        e_layout.setSpacing(10)
+
+        self.slider_threshold = QSlider(Qt.Orientation.Horizontal)
+        self.slider_threshold.setRange(1, 20)
+        self.slider_threshold.setValue(5)
+        self.slider_threshold.setFixedWidth(160)
+        self.lbl_threshold_val = QLabel("Medium (Balanced)")
+        self.lbl_threshold_val.setStyleSheet("color: #FFFFFF; font-size: 12px; font-weight: 500;")
+        self.lbl_threshold_val.setFixedWidth(140)
+        self.slider_threshold.valueChanged.connect(self._on_threshold_slider_changed)
+        e_layout.addWidget(self.slider_threshold)
+        e_layout.addWidget(self.lbl_threshold_val)
+
+        card.add_row(SettingsRow(
+            "Voice Detection Sensitivity",
+            "Minimum voice energy required to trigger speech. Lower values pick up quieter or distant speech; higher values ignore room noise.",
+            energy_widget
+        ))
+
+        # Windows System Audio Settings Row
+        win_sound_widget = QWidget()
+        w_layout = QHBoxLayout(win_sound_widget)
+        w_layout.setContentsMargins(0, 0, 0, 0)
+        w_layout.setSpacing(8)
+
+        btn_win_sound = QPushButton("Open Windows Sound Settings")
+        btn_win_sound.setObjectName("secondaryBtn")
+        btn_win_sound.clicked.connect(self._open_windows_sound_settings)
+        w_layout.addWidget(btn_win_sound)
+
+        card.add_row(SettingsRow(
+            "System Hardware Range",
+            "Adjust hardware input volume, microphone boost, and device permissions directly in Windows.",
+            win_sound_widget
+        ))
+
         layout.addWidget(card)
 
         layout.addStretch()
@@ -819,6 +884,16 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
         else:
             self.combo_mic.setCurrentIndex(0)
 
+        # Mic Range / Gain and Sensitivity
+        gain = float(app_config.get("mic_gain", 1.0))
+        self.slider_gain.setValue(int(gain * 100))
+        self._on_gain_slider_changed(int(gain * 100))
+
+        th = float(app_config.get("audio_energy_threshold", 0.005))
+        th_val = max(1, min(20, int(th * 1000)))
+        self.slider_threshold.setValue(th_val)
+        self._on_threshold_slider_changed(th_val)
+
         # 4. AI & Whisper Models
         wm = app_config.get("whisper_model", "tiny.en")
         idx_wm = self.combo_whisper_model.findText(wm)
@@ -896,6 +971,8 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
 
         dev_idx = self.combo_mic.currentData()
         app_config.set("input_device_index", dev_idx)
+        app_config.set("mic_gain", round(self.slider_gain.value() / 100.0, 2))
+        app_config.set("audio_energy_threshold", round(self.slider_threshold.value() / 1000.0, 4))
 
         self.settings_changed.emit()
 
@@ -927,10 +1004,41 @@ class SettingsWindow(QMainWindow, SmartStudioPagesMixin):
         else:
             QMessageBox.information(self, "Vocabulary", "Please select a word from the list to remove.")
 
+    def _on_gain_slider_changed(self, val: int):
+        factor = val / 100.0
+        if val == 100:
+            txt = "1.0x (Default)"
+        elif val < 100:
+            txt = f"{factor:.1f}x (Lower)"
+        else:
+            txt = f"{factor:.1f}x (Boosted Range)"
+        self.lbl_gain_val.setText(txt)
+        if hasattr(self, '_test_recorder') and self._test_recorder:
+            self._test_recorder.set_gain(factor)
+
+    def _on_threshold_slider_changed(self, val: int):
+        if val <= 2:
+            txt = "Ultra-Sensitive (Far)"
+        elif val <= 5:
+            txt = "Medium (Balanced)"
+        elif val <= 10:
+            txt = "Close Range (Speech Only)"
+        else:
+            txt = "Strict (Noisy Room)"
+        self.lbl_threshold_val.setText(txt)
+
+    def _open_windows_sound_settings(self):
+        import subprocess
+        try:
+            subprocess.Popen(["cmd", "/c", "start", "ms-settings:sound"])
+        except Exception as e:
+            print(f"[Settings] Could not open Windows sound settings: {e}")
+
     def _toggle_mic_test(self, checked: bool):
         if checked:
             dev_idx = self.combo_mic.currentData()
-            self._test_recorder = AudioRecorder(device_index=dev_idx)
+            gain = self.slider_gain.value() / 100.0
+            self._test_recorder = AudioRecorder(device_index=dev_idx, gain=gain)
             self._test_recorder.audio_level_updated.connect(self._on_test_mic_level)
             self._test_recorder.start()
             self.btn_test_mic.setText("Stop Test")

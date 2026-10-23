@@ -20,10 +20,11 @@ class AudioRecorder(QObject):
     recording_started = pyqtSignal()
     recording_stopped = pyqtSignal()
 
-    def __init__(self, sample_rate: int = 16000, device_index: Optional[int] = None):
+    def __init__(self, sample_rate: int = 16000, device_index: Optional[int] = None, gain: float = 1.0):
         super().__init__()
         self.sample_rate = sample_rate
         self.device_index = device_index
+        self.gain = gain
         self._is_recording = False
         self._stream: Optional[sd.InputStream] = None
         self._frames: List[np.ndarray] = []
@@ -36,6 +37,10 @@ class AudioRecorder(QObject):
     def set_device(self, device_index: Optional[int]) -> None:
         """Update active input device."""
         self.device_index = device_index
+
+    def set_gain(self, gain: float) -> None:
+        """Update microphone software gain / pickup range (0.2x to 4.0x)."""
+        self.gain = max(0.1, min(4.0, float(gain)))
 
     def start(self) -> bool:
         """Start recording from the microphone."""
@@ -109,6 +114,9 @@ class AudioRecorder(QObject):
             return
 
         chunk = indata.copy()
+        if self.gain != 1.0:
+            chunk = np.clip(chunk * self.gain, -1.0, 1.0)
+
         with self._lock:
             self._frames.append(chunk)
 

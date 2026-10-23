@@ -21,7 +21,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     # Audio
     "sample_rate": 16000,
     "input_device_index": None,          # None = system default
-    "audio_energy_threshold": 0.005,     # Silence threshold
+    "audio_energy_threshold": 0.005,     # Silence / Voice activity threshold
+    "mic_gain": 1.0,                     # Microphone pickup range / volume multiplier (0.5x - 3.0x)
     "sound_effects": True,
 
     # Transcription

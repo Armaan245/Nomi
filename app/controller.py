@@ -67,7 +67,8 @@ class AppController(QObject):
 
         # Audio Recorder
         dev_idx = app_config.get("input_device_index")
-        self.recorder = AudioRecorder(device_index=dev_idx)
+        gain = app_config.get("mic_gain", 1.0)
+        self.recorder = AudioRecorder(device_index=dev_idx, gain=gain)
         self.recorder.audio_level_updated.connect(self.pill.update_volume)
 
         # Global Hotkey Manager
@@ -149,6 +150,7 @@ class AppController(QObject):
 
         dev_idx = app_config.get("input_device_index")
         self.recorder.set_device(dev_idx)
+        self.recorder.set_gain(app_config.get("mic_gain", 1.0))
 
         # Update whisper model
         self._local_whisper = LocalWhisperService(
@@ -219,10 +221,11 @@ class AppController(QObject):
         duration_sec = round(len(audio_data) / 16000.0, 2)
         print(f"[Controller] Dictation stopped. Recorded {len(audio_data)} samples ({duration_sec}s).")
 
-        # Check if audio has minimum duration
-        if not has_speech(audio_data):
-            print("[Controller] Audio was too short (< 0.2s).")
-            self.signal_set_state_cancelled.emit("Too short")
+        # Check if audio has minimum duration and speech energy
+        threshold = float(app_config.get("audio_energy_threshold", 0.005)) * 0.1
+        if not has_speech(audio_data, threshold=threshold):
+            print("[Controller] Audio was too quiet or too short (< 0.2s).")
+            self.signal_set_state_cancelled.emit("Too quiet")
             return
 
         # Advance pill state to transcribing
@@ -293,7 +296,8 @@ class AppController(QObject):
         """Worker thread executing STT, LLM post-processing, and auto-pasting."""
         try:
             # 1. Silence trimming
-            trimmed_audio = trim_silence(audio_data)
+            energy_th = float(app_config.get("audio_energy_threshold", 0.005)) * 0.4
+            trimmed_audio = trim_silence(audio_data, threshold=energy_th)
             if len(trimmed_audio) == 0:
                 trimmed_audio = audio_data
 
